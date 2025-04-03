@@ -9,8 +9,8 @@ MODEL:
 SOLVER:
   BASE_LR: 0.00001
   EPOCHS: 10
-  WARMUP_ITERS: 20000
-  TYPE: AdamW  # TODO, support optional optimizer
+  WARMUP_ITERS: 15000
+  TYPE: AdamW
   GRAD_L2_CLIP: 5.0
 TRAIN:
   TYPE: train
@@ -24,7 +24,7 @@ TRAIN:
   IMG_W: 64
 TEST:
   TYPE: test
-  IMS_PER_BATCH: 48
+  IMS_PER_BATCH: 24
   IMG_H: 64
   IMG_W: 64
 DATA_LOADER:
