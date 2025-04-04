@@ -7,11 +7,11 @@ from pathlib import Path
 def preprocess_handwriting(input_path, output_path, target_size=64):
     """
     Preprocess handwriting image:
-    1. Convert to grayscale
-    2. Binarize to get black text on white background
-    3. Remove noise
+    1. Load the image
+    2. Filter out white background
+    3. Make strokes white on black background
     4. Resize while maintaining aspect ratio
-    5. Center on white background
+    5. Center on black background
     
     Args:
         input_path: Path to input directory (can contain subfolders)
@@ -47,39 +47,28 @@ def preprocess_handwriting(input_path, output_path, target_size=64):
         # Convert to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        # Apply adaptive thresholding to handle varying lighting
-        binary = cv2.adaptiveThreshold(
-            gray,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV,
-            11,  # Block size
-            2    # C constant
-        )
+        # Apply threshold to separate strokes from background
+        _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
         
-        # Remove noise
-        kernel = np.ones((2,2), np.uint8)
-        denoised = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+        # Invert to get white strokes on black background
+        inverted = cv2.bitwise_not(binary)
         
-        # Invert to get black text on white background
-        denoised = cv2.bitwise_not(denoised)
-        
-        # Find text bounding box to crop empty space
-        coords = cv2.findNonZero(cv2.bitwise_not(denoised))
+        # Find bounding box of content
+        coords = cv2.findNonZero(inverted)
         if coords is not None:
             x, y, w, h = cv2.boundingRect(coords)
-            denoised = denoised[y:y+h, x:x+w]
+            inverted = inverted[y:y+h, x:x+w]
         
         # Convert to PIL Image for better resizing
-        pil_img = Image.fromarray(denoised)
+        pil_img = Image.fromarray(inverted)
         
         # Calculate new size while maintaining aspect ratio
         ratio = target_size / max(pil_img.size)
         new_size = tuple([int(x * ratio) for x in pil_img.size])
         resized = pil_img.resize(new_size, Image.Resampling.LANCZOS)
         
-        # Create new white image
-        final = Image.new('L', (target_size, target_size), 255)
+        # Create new black image
+        final = Image.new('L', (target_size, target_size), 0)
         
         # Paste resized image in center
         paste_x = (target_size - new_size[0]) // 2
