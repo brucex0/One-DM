@@ -80,12 +80,54 @@ class ExternallyManagedPythonSetup:
             return False
             
         return True
+    
+    def fix_apt_sources(self):
+        """Fix any broken apt sources before updating"""
+        self.print_color(self.GREEN, "Checking for problematic apt sources...")
+        
+        # Check if Docker repo exists and is causing problems
+        docker_source_path = "/etc/apt/sources.list.d/docker.list"
+        if os.path.exists(docker_source_path):
+            self.print_color(self.YELLOW, f"Found Docker repository sources that might be misconfigured")
+            
+            # Backup the file
+            backup_cmd = f"sudo cp {docker_source_path} {docker_source_path}.bak"
+            self.run_command(backup_cmd, shell=True, check=False)
+            
+            # Disable the problematic repositories by commenting them out
+            disable_cmd = f"sudo sed -i 's/^deb/# deb/' {docker_source_path}"
+            self.run_command(disable_cmd, shell=True, check=False)
+            
+            self.print_color(self.GREEN, f"Disabled potentially problematic Docker repository")
+        
+        # Check for other problematic repositories in the main sources list
+        other_repos = [
+            "download.docker.com"
+        ]
+        
+        for repo in other_repos:
+            check_cmd = f"grep -l '{repo}' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true"
+            result = self.run_command(check_cmd, shell=True, check=False)
+            
+            if result.stdout.strip():
+                files = result.stdout.strip().split('\n')
+                for file_path in files:
+                    if file_path and os.path.exists(file_path):
+                        self.print_color(self.YELLOW, f"Disabling problematic repository in {file_path}")
+                        backup_cmd = f"sudo cp {file_path} {file_path}.bak"
+                        self.run_command(backup_cmd, shell=True, check=False)
+                        
+                        disable_cmd = f"sudo sed -i 's/^deb.*{repo}/# deb \\0/' {file_path}"
+                        self.run_command(disable_cmd, shell=True, check=False)
         
     def install_system_packages(self):
         """Install required system packages"""
         if not self.is_root:
             self.print_color(self.YELLOW, "Non-root user detected. Using sudo for system package installation.")
-            
+        
+        # Fix any problematic apt sources
+        self.fix_apt_sources()
+        
         packages = [
             "git",
             "build-essential",
