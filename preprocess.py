@@ -12,19 +12,32 @@ def preprocess_handwriting(input_path, output_path, target_size=64):
     3. Remove noise
     4. Resize while maintaining aspect ratio
     5. Center on white background
-    """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_path, exist_ok=True)
     
-    # Get all image files
+    Args:
+        input_path: Path to input directory (can contain subfolders)
+        output_path: Path to output directory (will mirror input structure)
+        target_size: Target size for output images
+    """
+    # Convert paths to Path objects
+    input_path = Path(input_path)
+    output_path = Path(output_path)
+    
+    # Get all image files recursively
     image_files = []
     for ext in ['.png', '.jpg', '.jpeg']:
-        image_files.extend(list(Path(input_path).glob(f'*{ext}')))
-        image_files.extend(list(Path(input_path).glob(f'*{ext.upper()}')))
+        image_files.extend(list(input_path.rglob(f'*{ext}')))
+        image_files.extend(list(input_path.rglob(f'*{ext.upper()}')))
     
     print(f"Found {len(image_files)} images to process")
     
     for img_path in image_files:
+        # Calculate relative path from input directory
+        rel_path = img_path.relative_to(input_path)
+        
+        # Create corresponding output directory
+        output_dir = output_path / rel_path.parent
+        os.makedirs(output_dir, exist_ok=True)
+        
         # Read image
         img = cv2.imread(str(img_path))
         if img is None:
@@ -73,10 +86,10 @@ def preprocess_handwriting(input_path, output_path, target_size=64):
         paste_y = (target_size - new_size[1]) // 2
         final.paste(resized, (paste_x, paste_y))
         
-        # Save preprocessed image
-        output_file = os.path.join(output_path, img_path.name)
+        # Save preprocessed image maintaining folder structure
+        output_file = output_path / rel_path
         final.save(output_file)
-        print(f"Processed {img_path.name}")
+        print(f"Processed {rel_path}")
 
 if __name__ == "__main__":
     import argparse
