@@ -156,7 +156,7 @@ class ExternallyManagedPythonSetup:
             self.run_command(["mkdir", "-p", self.project_dir], sudo=True)
             
         # Clone repository if not already cloned
-        repo_dir = '.'//os.path.join(self.project_dir, "One-DM")
+        repo_dir = '.'#os.path.join(self.project_dir, "One-DM")
         if not os.path.exists(repo_dir):
             self.print_color(self.GREEN, "Cloning One-DM repository...")
             self.run_command(
