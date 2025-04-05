@@ -17,6 +17,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from models.recognition import HTRNet
 from data_loader.loader import letters
 from models.loss import SupConLoss
+import os
 
 def main(opt):
     """ load config file into cfg"""
@@ -27,29 +28,43 @@ def main(opt):
     """ prepare log file """
     logs = set_log(cfg.OUTPUT_DIR, opt.cfg_file, opt.log_name)
 
-    """ set mulit-gpu """
-    dist.init_process_group(backend='nccl')
-    local_rank = dist.get_rank()
-    torch.cuda.set_device(local_rank)
-    device = torch.device(opt.device, local_rank)
+    """ set device and distributed training if available """
+    is_distributed = int(os.environ.get('WORLD_SIZE', 1)) > 1
+    if is_distributed:
+        dist.init_process_group(backend='nccl')
+        local_rank = dist.get_rank()
+        torch.cuda.set_device(local_rank)
+        device = torch.device(opt.device, local_rank)
+    else:
+        device = torch.device(opt.device)
+        local_rank = 0
     
     """ set dataset"""
     train_dataset = IAMDataset(
         cfg.DATA_LOADER.IAMGE_PATH, cfg.DATA_LOADER.STYLE_PATH, cfg.DATA_LOADER.LAPLACE_PATH, cfg.TRAIN.TYPE)
     print('number of training images: ', len(train_dataset))
-    train_sampler = DistributedSampler(train_dataset)
+    
+    if is_distributed:
+        train_sampler = DistributedSampler(train_dataset)
+    else:
+        train_sampler = None
+        
     train_loader = torch.utils.data.DataLoader(train_dataset,
                                                batch_size=cfg.TRAIN.IMS_PER_BATCH,
                                                drop_last=False,
                                                collate_fn=train_dataset.collate_fn_,
                                                num_workers=cfg.DATA_LOADER.NUM_THREADS,
                                                pin_memory=True,
-                                               sampler=train_sampler)
-    
+                                               sampler=train_sampler,
+                                               shuffle=(train_sampler is None))
     
     test_dataset = IAMDataset(
         cfg.DATA_LOADER.IAMGE_PATH, cfg.DATA_LOADER.STYLE_PATH, cfg.DATA_LOADER.LAPLACE_PATH, cfg.TEST.TYPE)
-    test_sampler = DistributedSampler(test_dataset)
+        
+    if is_distributed:
+        test_sampler = DistributedSampler(test_dataset)
+    else:
+        test_sampler = None
 
     test_loader = torch.utils.data.DataLoader(test_dataset,
                                               batch_size=cfg.TEST.IMS_PER_BATCH,
@@ -57,7 +72,8 @@ def main(opt):
                                               collate_fn=test_dataset.collate_fn_,
                                               pin_memory=True,
                                               num_workers=cfg.DATA_LOADER.NUM_THREADS,
-                                              sampler=test_sampler)
+                                              sampler=test_sampler,
+                                              shuffle=(test_sampler is None))
     
     """build model architecture"""
     unet = UNetModel(in_channels=cfg.MODEL.IN_CHANNELS, model_channels=cfg.MODEL.EMB_DIM, 
@@ -67,13 +83,18 @@ def main(opt):
     
     """load pretrained model"""
     if len(opt.one_dm) > 0:
-        unet.load_state_dict(torch.load(opt.one_dm, map_location=torch.device('cpu')))
-        print('load pretrained one_dm model from {}'.format(opt.one_dm))
+        try:
+            unet.load_state_dict(torch.load(opt.one_dm, map_location=torch.device('cpu')))
+            print('Successfully loaded pretrained one_dm model from {}'.format(opt.one_dm))
+        except Exception as e:
+            print('Error loading one_dm model from {}: {}'.format(opt.one_dm, str(e)))
+            exit(1)
     else:
-        print('no pretrained one_dm model loaded')
-        exit()
+        print('Error: one_dm model path not specified')
+        exit(1)
 
-    unet = DDP(unet, device_ids=[local_rank], broadcast_buffers=False)
+    if is_distributed:
+        unet = DDP(unet, device_ids=[local_rank], broadcast_buffers=False)
     optimizer = optim.AdamW(unet.parameters(), lr=cfg.SOLVER.BASE_LR)
     ctc_loss = nn.CTCLoss()
     criterion = dict(nce=SupConLoss(contrast_mode='all'), recon=nn.MSELoss())
@@ -82,11 +103,19 @@ def main(opt):
     '''load pretrained ocr model'''
     ocr_model = HTRNet(nclasses = len(letters), vae=True)
     if len(opt.ocr_model) > 0:
-        miss, unxep = ocr_model.load_state_dict(torch.load(opt.ocr_model, map_location=torch.device('cpu')), strict=False)
-        print('load pretrained ocr model from {}'.format(opt.ocr_model))
+        try:
+            miss, unxep = ocr_model.load_state_dict(torch.load(opt.ocr_model, map_location=torch.device('cpu')), strict=False)
+            print('Successfully loaded pretrained ocr model from {}'.format(opt.ocr_model))
+            if miss:
+                print('Warning: Missing keys in OCR model:', miss)
+            if unxep:
+                print('Warning: Unexpected keys in OCR model:', unxep)
+        except Exception as e:
+            print('Error loading OCR model from {}: {}'.format(opt.ocr_model, str(e)))
+            exit(1)
     else:
-        print('failed to load the pretrained ocr model')
-        exit()
+        print('Error: OCR model path not specified')
+        exit(1)
     ocr_model.requires_grad_(False)
     ocr_model = ocr_model.to(device)
 
@@ -108,7 +137,7 @@ if __name__ == '__main__':
     parser.add_argument('--stable_dif_path', type=str, default='runwayml/stable-diffusion-v1-5', help='path to stable diffusion')
     parser.add_argument('--cfg', dest='cfg_file', default='configs/IAM64_finetune.yml',
                         help='Config file for training (and optionally testing)')
-    parser.add_argument('--one_dm', dest='one_dm', default='', help='pre-trained one_dm model')
+    parser.add_argument('--one_dm', dest='one_dm', default='./model_zoo/One-DM-ckpt.pt', help='pre-trained one_dm model')
     parser.add_argument('--ocr_model', dest='ocr_model', default='./model_zoo/vae_HTR138.pth', help='pre-trained ocr model')
     parser.add_argument('--log', default='debug',
                         dest='log_name', required=False, help='the filename of log')
