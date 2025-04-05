@@ -1,20 +1,30 @@
-torch>=1.10.0
-torchvision>=0.11.0
-numpy>=1.20.0
-opencv-python>=4.5.0
-Pillow>=8.0.0
-tqdm>=4.60.0
-matplotlib>=3.4.0
-scikit-image>=0.18.0
-scipy>=1.7.0
-tensorboard>=2.7.0
-transformers>=4.15.0
-diffusers>=0.10.0
-accelerate>=0.12.0
-gdown>=4.4.0
-einops>=0.4.0
-timm>=0.5.0
-albumentations>=1.0.0
-pytorch-lightning>=1.5.0
-omegaconf>=2.1.0
-hydra-core>=1.1.0 
+# PyTorch
+torch==1.13.1
+torchvision==0.14.1
+tensorboardX==2.6.2.2
+
+# Computer Vision
+opencv-python==4.7.0.72
+Pillow==9.5.0
+numpy==1.21.6
+
+# Core Dependencies
+diffusers==0.18.2
+transformers==4.30.2
+safetensors==0.3.1
+omegaconf==2.1.2
+hydra-core==1.1.1
+pytorch-lightning==1.5.10
+
+# Utils
+tqdm==4.65.0
+einops==0.6.1
+easydict==1.13
+pyyaml==6.0.1
+
+# Data
+lmdb==1.4.1
+
+# Scientific
+scipy==1.7.3  # Required for image processing
+accelerate==0.19.0  # Required for training optimization 
